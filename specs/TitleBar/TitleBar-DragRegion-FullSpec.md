@@ -42,7 +42,7 @@ This specification evaluates multiple approaches to defining draggable and nonâ€
 ![Non draggable gaps in TitleBar Content](./images/titlebar-drag-issue.png)
 
 In this simple layout:
-- Column 0 contains **Sample Text Block**
+- Column 0 contains **Sample Search Box**
 - Column 2 contains **Help**
 - Column 1 is **empty visual space** that may become a non-draggable gap
 
