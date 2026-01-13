@@ -145,7 +145,7 @@ Expose a **boolean behavior property** on `TitleBar` to opt into improved defaul
             </Border>
             <Border Grid.Column="1" />
             <Border Grid.Column="2" Background="LightCoral" BorderBrush="Black" BorderThickness="1">
-                <TextBlock Text="Help" VerticalAlignment="Center" HorizontalAlignment="Center" TitleBar.IsDragRegion="False" />
+                <TextBlock Text="Help" VerticalAlignment="Center" HorizontalAlignment="Center" />
             </Border>
         </Grid>
     </TitleBar.Content>
