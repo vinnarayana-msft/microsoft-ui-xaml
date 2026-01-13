@@ -109,7 +109,7 @@ Make the **entire content region draggable by default** and have developers expl
             </Border>
             <Border Grid.Column="1" />
             <Border Grid.Column="2" Background="LightCoral" BorderBrush="Black" BorderThickness="1">
-                <TextBlock Text="Help" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                <TextBlock Text="Help" VerticalAlignment="Center" HorizontalAlignment="Center" TitleBar.IsDragRegion="False" />
             </Border>
         </Grid>
     </TitleBar.Content>
@@ -141,7 +141,7 @@ Expose a **boolean behavior property** on `TitleBar` to opt into improved defaul
                 <ColumnDefinition Width="50" />
             </Grid.ColumnDefinitions>
             <Border Grid.Column="0" Background="LightBlue" BorderBrush="Black" BorderThickness="1">
-                <AutoSuggestBox PlaceholderText="Search" TitleBar.IsDragRegion="True"/>
+                <AutoSuggestBox PlaceholderText="Search"/>
             </Border>
             <Border Grid.Column="1" />
             <Border Grid.Column="2" Background="LightCoral" BorderBrush="Black" BorderThickness="1">
