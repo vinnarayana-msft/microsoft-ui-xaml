@@ -1,4 +1,5 @@
 TitleBar Drag Region API Specification
+TitleBar Drag Region API Specification
 ===
 
 # Background
@@ -9,16 +10,19 @@ Under the **current default behavior**, the framework treats the entire `TitleBa
 
 This problem has been raised and discussed by developers in the WinUI community, for example in: **[#10421](https://github.com/microsoft/microsoft-ui-xaml/issues/10421)**.
 
-This specification evaluates multiple approaches to defining draggable and non‑draggable regions within `TitleBar.Content`, and proposes a solution that balances **predictable defaults** with **developer‑provided intent**.
+This specification introduces **two changes** to address these issues:
+
+1. **Changing the default behavior** for deciding which parts of the TitleBar can be used to drag. The framework now recursively walks the visual tree and automatically excludes interactive controls from the drag region, making empty gaps and non‑interactive areas draggable by default.
+2. **Giving developers the ability to override the default behavior** on a per‑element basis using the `TitleBar.IsDragRegion` attached property, and control when drag regions are recomputed via `AutoRefreshDragRegions` and `RecomputeDragRegions()`.
 
 ---
 
 # Conceptual pages (How To)
 
-#### Problem example: gaps become non-draggable
+## Change 1: Changes to default behavior
 
 ```xml
-<TitleBar Title="Main Titlte" Subtitle="subtitle" x:Name="titleBar">
+<TitleBar Title="Main Title" Subtitle="subtitle" x:Name="titleBar">
     <TitleBar.Content>
         <Grid>
             <Grid.ColumnDefinitions>
@@ -44,119 +48,77 @@ This specification evaluates multiple approaches to defining draggable and non�
 In this simple layout:
 - Column 0 contains **Sample Search Box**
 - Column 2 contains **Help**
-- Column 1 is **empty visual space** that may become a non-draggable gap
+- Column 1 is **empty visual space** that becomes a non-draggable gap under the previous behavior
 
 Even in simple cases, it is non-trivial for the framework to automatically classify such gaps as draggable or non-draggable. More complex layouts—nested controls, templated UI, and dynamic content—make automatic detection even harder.
 
-## Approaches Overview
+**With the new default behavior**, the framework recursively traverses the visual tree and **excludes only interactive controls from drag**. Empty visual space (such as Column 1 above) and non‑interactive elements are now **draggable by default**, without any markup changes. The same XAML above now produces the correct result:
 
-### Approach 1 — Fully Automatic Control Detection (Framework-only)
-The framework recursively traverses the visual tree and treats *all interactive controls* (e.g., `Button`, `AutoSuggestBox`, `ComboBox`) as **non‑draggable** by default. The remaining areas are considered draggable.
-
-**Pros**
-- Zero developer annotation; works out of the box.
-
-**Cons**
-- Developers **cannot customize** exceptions easily (e.g., some products allow dragging over ribbon controls while others do not over the search box); per‑app customization is blocked.
-
-**XAML sample**
-```xml
-<TitleBar Title="Main Titlte" Subtitle="subtitle" x:Name="titleBar">
-    <TitleBar.Content>
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
-                <ColumnDefinition Width="200" />
-                <ColumnDefinition Width="50" />
-            </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Background="LightBlue" BorderBrush="Black" BorderThickness="1">
-                <AutoSuggestBox PlaceholderText="Search"/>
-            </Border>
-            <Border Grid.Column="1" />
-            <Border Grid.Column="2" Background="LightCoral" BorderBrush="Black" BorderThickness="1">
-                <TextBlock Text="Help" VerticalAlignment="Center" HorizontalAlignment="Center" />
-            </Border>
-        </Grid>
-    </TitleBar.Content>
-</TitleBar>
-```
-#### Output:
+#### Output (with new defaults):
 ![Non draggable gaps in TitleBar Content](./images/titlebar-drag-issue-fixed-1.png)
 
 ---
 
-### Approach 2 — Developer‑specified Exclusion (Manual)
-Make the **entire content region draggable by default** and have developers explicitly **exclude** elements that should *not* participate in drag by setting the attached property **`TitleBar.IsDragRegion="False"`** on those elements.
+## Change 2: Per‑element overrides with `TitleBar.IsDragRegion`
 
-**Pros**
-- **Granular control**: developers can mark exactly what should or should not drag.
-
-**Cons**
-- **Tedious** to annotate every control in complex layouts; shifts burden to app authors rather than the framework.
-
-**XAML sample**
-```xml
-<TitleBar Title="Main Titlte" Subtitle="subtitle" x:Name="titleBar">
-    <TitleBar.Content>
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
-                <ColumnDefinition Width="200" />
-                <ColumnDefinition Width="50" />
-            </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Background="LightBlue" BorderBrush="Black" BorderThickness="1">
-                <AutoSuggestBox PlaceholderText="Search" TitleBar.IsDragRegion="False"/>
-            </Border>
-            <Border Grid.Column="1" />
-            <Border Grid.Column="2" Background="LightCoral" BorderBrush="Black" BorderThickness="1">
-                <TextBlock Text="Help" VerticalAlignment="Center" HorizontalAlignment="Center" TitleBar.IsDragRegion="False" />
-            </Border>
-        </Grid>
-    </TitleBar.Content>
-</TitleBar>
-```
-#### Output:
-![Non draggable gaps in TitleBar Content](./images/titlebar-drag-issue-fixed-1.png)
----
-
-### Approach 3 — **Recommended**: Enhanced Defaults + Developer Overrides (Hybrid)
-Expose a **boolean behavior property** on `TitleBar` to opt into improved default logic. When **enabled**, the framework recursively traverses the visual tree and **excludes interactive controls from drag by default**. Developers can then **override** per element using `TitleBar.IsDragRegion`:
+Developers can **override** the default behavior on any element using the `TitleBar.IsDragRegion` attached property:
 - Set `IsDragRegion="True"` to **include** an element in the drag region even if it is an interactive control (e.g., ribbon areas that should drag).
-- Set `IsDragRegion="False"` to **exclude** non‑control surfaces or containers from drag.
-- If the property is **omitted or False**, the framework uses the current default behavior.
+- Set `IsDragRegion="False"` to **exclude** an element from drag even if the framework would not auto‑detect it as interactive.
+- If the property is **not set** (remains `null`), the framework uses the default behavior: interactive controls are excluded from drag, non‑interactive visuals are draggable.
 
-**Why recommended**
+> **Implementation note:** `IsDragRegion` is a **nullable boolean** (`IReference<Boolean>`). The getter returns `null` when the property has not been set, `true` when explicitly set to `True`, and `false` when explicitly set to `False`.
+
+**Advantages**
 - **Low developer effort** (good defaults).
 - **High flexibility** (simple overrides where needed).
 - **Consistent, accessible behavior** aligned with product expectations.
 
-**XAML sample**
+#### IsDragRegion tri-state behavior
+
+| State | How it's set | Getter returns | Meaning |
+|---|---|---|---|
+| **Not set** | Developer doesn't set it | `null` | "No opinion" — framework auto-detects based on control type |
+| **`False`** | `TitleBar.IsDragRegion="False"` | `false` | "Explicitly clickable" — always a passthrough hole |
+| **`True`** | `TitleBar.IsDragRegion="True"` | `true` | "Explicitly draggable" — never a passthrough, even if auto-detected as interactive |
+
+---
+
+## Drag Region Refresh Behavior
+
+By default, the TitleBar refreshes drag regions in response to:
+- Content changes (the `Content` property is set or replaced)
+- Content loaded events (the content's visual tree becomes ready)
+- Size changes (the TitleBar is resized)
+- `IsDragRegion` attached property changes (at runtime, including hot reload)
+
+For scenarios where content is dynamically modified at runtime (controls added/removed/resized after initial load), there are two options:
+
+### Option 1: Manual refresh with `RecomputeDragRegions()`
+
+Call `RecomputeDragRegions()` in code-behind after making dynamic changes:
+
+```csharp
+// After dynamically adding a button to the title bar content
+myStackPanel.Children.Add(new Button { Content = "New" });
+titleBar.RecomputeDragRegions();
+```
+
+### Option 2: Automatic refresh with `AutoRefreshDragRegions`
+
+Set `AutoRefreshDragRegions="True"` to subscribe to `LayoutUpdated` events for continuous automatic refresh. This is convenient but has a performance cost since it triggers a visual tree walk on every layout pass.
+
 ```xml
-<TitleBar Title="Main Titlte" Subtitle="subtitle" x:Name="titleBar" UseEnhancedDragRegions="True">
+<TitleBar AutoRefreshDragRegions="True">
     <TitleBar.Content>
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
-                <ColumnDefinition Width="200" />
-                <ColumnDefinition Width="50" />
-            </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Background="LightBlue" BorderBrush="Black" BorderThickness="1">
-                <AutoSuggestBox PlaceholderText="Search"/>
-            </Border>
-            <Border Grid.Column="1" />
-            <Border Grid.Column="2" Background="LightCoral" BorderBrush="Black" BorderThickness="1">
-                <TextBlock Text="Help" VerticalAlignment="Center" HorizontalAlignment="Center" />
-            </Border>
-        </Grid>
+        <!-- Dynamic content that changes at runtime -->
     </TitleBar.Content>
 </TitleBar>
 ```
-#### Output:
-![Non draggable gaps in TitleBar Content](./images/titlebar-drag-issue-fixed-3.png)
 
-#### Notes on behavior
-- The framework distinguishes between **explicit set** and **omitted** by using `ReadLocalValue(IsDragRegionProperty)` to detect whether the app author provided a value. If omitted, the default logic applies based on `UseEnhancedDragRegions`.
-- This design preserves a tri‑state *intent* while keeping the API surface **Boolean and simple** for overrides.
+| `AutoRefreshDragRegions` | Behavior |
+|---|---|
+| `False` (default) | Refreshes on Content/Size/Loaded/IsDragRegion changes. Call `RecomputeDragRegions()` for edge cases. |
+| `True` | All of the above **plus** every `LayoutUpdated` event (continuous automatic refresh). |
 
 ---
 
@@ -167,25 +129,36 @@ You can apply `IsDragRegion` to containers to include/exclude large UI areas (e.
 
 ```xml
 <StackPanel Orientation="Horizontal" TitleBar.IsDragRegion="False">
-  <Button Content="Back"/>
-  <Button Content="Forward"/>
-  <Button Content="Refresh"/>
+  <ComboBox PlaceholderText="Font"/>
+  <ComboBox PlaceholderText="Size"/>
+  <ToggleButton Content="Bold"/>
 </StackPanel>
 ```
 
-### Nested Layouts
-Use explicit `IsDragRegion` overrides on the specific nested element(s) that deviate from the default mode.
+### Nested Layouts with Overrides
+A container can be marked as draggable, while a specific child overrides that to remain interactive. The two cases below show the difference side‑by‑side.
 
+**Case A — Entire StackPanel is draggable (no overrides):**
 ```xml
-<Grid>
-  <StackPanel Orientation="Horizontal">
-    <TextBlock Text="Title"/> <!-- Default: drag -->
-    <Grid>
-      <Button Content="Settings" TitleBar.IsDragRegion="False"/> <!-- Exclude -->
-    </Grid>
-  </StackPanel>
-</Grid>
+<!-- The entire StackPanel and all its children are part of the drag region -->
+<StackPanel Orientation="Horizontal" TitleBar.IsDragRegion="True">
+  <ComboBox PlaceholderText="Font"/>
+  <ComboBox PlaceholderText="Size"/>
+  <ToggleButton Content="Bold"/>
+</StackPanel>
 ```
+
+**Case B — StackPanel is draggable, but one child overrides to remain clickable:**
+```xml
+<!-- StackPanel is draggable, but the ComboBox overrides to stay interactive -->
+<StackPanel Orientation="Horizontal" TitleBar.IsDragRegion="True">
+  <ComboBox PlaceholderText="Font" TitleBar.IsDragRegion="False"/>
+  <ComboBox PlaceholderText="Size"/>
+  <ToggleButton Content="Bold"/>
+</StackPanel>
+```
+In **Case B**, the "Font" `ComboBox` is explicitly excluded from drag (`IsDragRegion="False"`), so it remains clickable. The other children inherit the parent's `IsDragRegion="True"` and become part of the drag region.
+
 
 ### Using in XAML, C#, and C++/WinRT
 
@@ -198,39 +171,36 @@ Use explicit `IsDragRegion` overrides on the specific nested element(s) that dev
   <tr>
     <td><b>XAML</b></td>
     <td>
-<pre lang="xml">&lt;TitleBar UseEnhancedDragRegions="True"&gt;
+<pre lang="xml">&lt;TitleBar AutoRefreshDragRegions="True"&gt;
   &lt;TitleBar.Content&gt;
-    &lt;TextBlock Text="My App" /&gt;
-    &lt;AutoSuggestBox TitleBar.IsDragRegion="True" /&gt;
+    &lt;StackPanel Orientation="Horizontal"&gt;
+      &lt;TextBlock Text="My App" VerticalAlignment="Center" /&gt;
+      &lt;AutoSuggestBox TitleBar.IsDragRegion="True" /&gt;
+    &lt;/StackPanel&gt;
   &lt;/TitleBar.Content&gt;
 &lt;/TitleBar&gt;</pre>
     </td>
-    <td>Enable enhanced defaults and opt a control into drag.</td>
+    <td>Enable automatic drag region refresh and opt a control into drag.</td>
   </tr>
   <tr>
     <td><b>C#</b></td>
     <td>
-<pre lang="csharp">// Behavior on TitleBar
-TitleBar tb = this.AppWindow.TitleBar();
-tb.UseEnhancedDragRegions = true;
-
-// Per-element override
+<pre lang="csharp">// Per-element override (nullable bool)
 var search = new AutoSuggestBox();
-TitleBar.SetIsDragRegion(search, true);</pre>
+TitleBar.SetIsDragRegion(search, true);
+// Manual refresh after dynamic changes
+titleBar.RecomputeDragRegions();</pre>
     </td>
-    <td>Set the boolean and override an element in code-behind.</td>
+    <td>Override an element in code-behind and manually refresh.</td>
   </tr>
   <tr>
     <td><b>C++/WinRT</b></td>
     <td>
-<pre lang="cpp">using namespace Microsoft::UI::Xaml;
-using namespace Microsoft::UI::Xaml::Controls;
-
-TitleBar tb = AppWindow().TitleBar();
-tb.UseEnhancedDragRegions(true);
-
+<pre lang="cpp">using namespace winrt::Microsoft::UI::Xaml::Controls;
 AutoSuggestBox search{};
-TitleBar::SetIsDragRegion(search, true);</pre>
+TitleBar::SetIsDragRegion(search, true);
+// Manual refresh after dynamic changes
+titleBar.RecomputeDragRegions();</pre>
     </td>
     <td>Equivalent usage in C++/WinRT.</td>
   </tr>
@@ -241,48 +211,80 @@ TitleBar::SetIsDragRegion(search, true);</pre>
 # API Pages
 
 ## TitleBar.IsDragRegion attached property
-Marks an element as **included** in the window drag region (`True`) or **excluded** (`False`), overriding the framework default for the current behavior.
+A **nullable boolean** (`IReference<Boolean>`) that marks an element as **included** in the window drag region (`True`) or **excluded** (`False`), overriding the framework default. When not set (`null`), the framework auto-detects based on control type.
+
+| Value | Meaning |
+|---|---|
+| **Not set** (`null`) | Framework decides: interactive controls are excluded from drag, non-interactive visuals are draggable. |
+| **`False`** | Explicitly clickable — always a passthrough hole, even if non-interactive. |
+| **`True`** | Explicitly draggable — never a passthrough, even if interactive. |
 
 ```xml
-<Button Content="Refresh" TitleBar.IsDragRegion="False"/>
-```
-
-### Remarks
-- If **omitted**, the framework’s default applies based on `UseEnhancedDragRegions`.
-- Use `ReadLocalValue(IsDragRegionProperty)` to detect explicit overrides in custom controls.
-
-## TitleBar.UseEnhancedDragRegions property
-Enables improved default behavior for drag-region calculation in `TitleBar.Content`. When `True`, interactive controls are excluded from drag by default and developers can override per element via `IsDragRegion`.
-
-```csharp
-var tb = AppWindow.TitleBar;
-tb.UseEnhancedDragRegions = true;
+<ComboBox PlaceholderText="Font" TitleBar.IsDragRegion="False"/>
 ```
 
 ### Example Usage
 ```xml
-<TitleBar UseEnhancedDragRegions="True">
+<TitleBar>
   <TitleBar.Content>
-    <AutoSuggestBox TitleBar.IsDragRegion="True"/>
-    <TextBlock Text="Title"/>
+    <StackPanel Orientation="Horizontal" TitleBar.IsDragRegion="True">
+      <ComboBox PlaceholderText="Font" TitleBar.IsDragRegion="False"/>
+      <ComboBox PlaceholderText="Size"/>
+      <ToggleButton Content="Bold"/>
+    </StackPanel>
   </TitleBar.Content>
 </TitleBar>
+```
+
+## TitleBar.AutoRefreshDragRegions property
+When `True`, the TitleBar subscribes to `LayoutUpdated` events on the content and automatically refreshes drag regions on every layout pass. Default is `False`.
+
+```xml
+<TitleBar AutoRefreshDragRegions="True"/>
+```
+
+## TitleBar.RecomputeDragRegions method
+Manually triggers a full recomputation of drag regions by walking the visual tree and updating passthrough rects. Use this when `AutoRefreshDragRegions` is `False` and content has been dynamically modified.
+
+```csharp
+titleBar.RecomputeDragRegions();
 ```
 
 ---
 
 # API Details
 
-```c#
+```c# (but really midl3)
 namespace Microsoft.UI.Xaml.Controls
 {
-    Boolean UseEnhancedDragRegions;
-    static DependencyProperty UseEnhancedDragRegionsProperty { get; };
-    
-    // Attached property used for per-element overrides
-    static DependencyProperty IsDragRegionProperty { get; };
-    static void SetIsDragRegion(DependencyObject element, Boolean value);
-    static Boolean GetIsDragRegion(DependencyObject element);
+    unsealed runtimeclass TitleBar : Microsoft.UI.Xaml.Controls.Control
+    {
+        // ... existing properties ...
+
+        // New in V10:
+        // When true, drag regions are automatically refreshed on every layout update.
+        // When false (default), drag regions are refreshed on Content/Size changes only;
+        // call RecomputeDragRegions() for manual refresh.
+        [MUX_PUBLIC_V10]
+        {
+            [MUX_DEFAULT_VALUE("false")]
+            Boolean AutoRefreshDragRegions{ get; set; };
+            static Microsoft.UI.Xaml.DependencyProperty AutoRefreshDragRegionsProperty{ get; };
+
+            // Manually triggers a full recomputation of drag regions.
+            void RecomputeDragRegions();
+        }
+
+        // Attached property: nullable boolean for per-element drag region overrides.
+        // null = unset (framework decides), false = clickable, true = draggable.
+        [MUX_PUBLIC_V10]
+        {
+            [MUX_PROPERTY_CHANGED_CALLBACK_METHODNAME("OnIsDragRegionPropertyChanged")]
+            static Microsoft.UI.Xaml.DependencyProperty IsDragRegionProperty{ get; };
+            static Windows.Foundation.IReference<Boolean> GetIsDragRegion(Microsoft.UI.Xaml.UIElement element);
+            static void SetIsDragRegion(Microsoft.UI.Xaml.UIElement element, Windows.Foundation.IReference<Boolean> value);
+        }
+    }
 }
 ```
 
@@ -294,7 +296,9 @@ namespace Microsoft.UI.Xaml.Controls
 This API affects **pointer hit‑testing** for window drag only; it does not change keyboard interaction. Ensure that interactive controls in `TitleBar.Content` remain fully focusable and operable. Keep a logical tab order in the title bar.
 
 ### Automation Behaviour
-`IsDragRegion` and `UseEnhancedDragRegions` **do not alter** UIA patterns or names of elements. Interactability for screen readers remains unchanged. Developers should verify that drag affordances are communicated visually and do not conflict with UIA expectations.
+`IsDragRegion` **does not alter** UIA patterns or names of elements. Interactability for screen readers remains unchanged. Developers should verify that drag affordances are communicated visually and do not conflict with UIA expectations.
 
 ### Backward Compatibility
-- Applications that **do not set** `UseEnhancedDragRegions` continue to use the current default behavior 
+- The updated drag‑region model introduces a new global default: interactive controls are not draggable, and non‑interactive visuals are draggable, unless explicitly overridden.
+- `IsDragRegion` is a new nullable boolean (`IReference<Boolean>`) attached property introduced in V10. The getter returns `null` when not set, `true` when explicitly set to `True`, and `false` when explicitly set to `False`.
+- `AutoRefreshDragRegions` defaults to `False`, preserving the existing performance characteristics. Developers who need continuous automatic refresh for highly dynamic content should set `AutoRefreshDragRegions="True"` or call `RecomputeDragRegions()` after dynamic changes.
